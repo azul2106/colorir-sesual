@@ -96,9 +96,107 @@ drawPlaceholder();
 file.onchange=()=>{
  const f=file.files[0];
  if(!f)return;
+
  if(!f.type.startsWith('image/')){
    status.textContent='Escolha um arquivo de imagem.';
    return;
+ }
+
+ const img=new Image();
+
+ img.onload=()=>{
+   const scale=Math.min(900/img.width,1200/img.height,1);
+
+   canvas.width=Math.round(img.width*scale);
+   canvas.height=Math.round(img.height*scale);
+
+   ctx.fillStyle='white';
+   ctx.fillRect(0,0,canvas.width,canvas.height);
+   ctx.drawImage(img,0,0,canvas.width,canvas.height);
+
+   original=ctx.getImageData(0,0,canvas.width,canvas.height);
+   history=[];
+
+   // Conta cores RGB exatas e agrupa tons semelhantes.
+   const pixels=original.data;
+   const coresExatas=new Set();
+   const tonsAgrupados=new Set();
+   const coresFrequentes=new Map();
+
+   for(let i=0;i<pixels.length;i+=4){
+     const r=pixels[i];
+     const g=pixels[i+1];
+     const b=pixels[i+2];
+     const a=pixels[i+3];
+
+     if(a===0)continue;
+
+     // Cor exata: inclui pequenas diferenças entre pixels.
+     const rgb=(r<<16)|(g<<8)|b;
+     coresExatas.add(rgb);
+
+     // Agrupa cores próximas em faixas de 8 níveis por canal.
+     const qr=Math.floor(r/8);
+     const qg=Math.floor(g/8);
+     const qb=Math.floor(b/8);
+     const grupo=(qr<<10)|(qg<<5)|qb;
+
+     tonsAgrupados.add(grupo);
+     coresFrequentes.set(grupo,(coresFrequentes.get(grupo)||0)+1);
+   }
+
+   const tonsPrincipais=[...coresFrequentes.entries()]
+     .sort((a,b)=>b[1]-a[1])
+     .slice(0,12);
+
+   status.textContent=
+     'Imagem analisada! Cores RGB diferentes: '+
+     coresExatas.size.toLocaleString('pt-BR')+
+     ' | Tons agrupados: '+
+     tonsAgrupados.size.toLocaleString('pt-BR')+
+     '.';
+
+   // Mostra alguns dos tons mais frequentes.
+   let painel=document.querySelector('#analise-cores');
+
+   if(!painel){
+     painel=document.createElement('div');
+     painel.id='analise-cores';
+     painel.style.cssText='margin:14px 0;padding:12px;background:#38213b;border-radius:12px;';
+     colors.insertAdjacentElement('afterend',painel);
+   }
+
+   painel.innerHTML='<p><b>🎨 Tons mais encontrados na imagem</b></p>';
+
+   const amostras=document.createElement('div');
+   amostras.style.cssText='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;';
+
+   tonsPrincipais.forEach(([grupo,quantidade])=>{
+     const r=((grupo>>10)&31)*8+4;
+     const g=((grupo>>5)&31)*8+4;
+     const b=(grupo&31)*8+4;
+
+     const amostra=document.createElement('div');
+     amostra.title='Pixels aproximados: '+quantidade.toLocaleString('pt-BR');
+     amostra.style.cssText=
+       'width:32px;height:32px;border-radius:7px;border:1px solid white;'+
+       'background:rgb('+Math.min(r,255)+','+
+       Math.min(g,255)+','+Math.min(b,255)+');';
+
+     amostras.appendChild(amostra);
+   });
+
+   painel.appendChild(amostras);
+
+   URL.revokeObjectURL(img.src);
+ };
+
+ img.onerror=()=>{
+   status.textContent='Não foi possível abrir essa imagem.';
+ };
+
+ img.src=URL.createObjectURL(f);
+};
  }
  const img=new Image();
  img.onload=()=>{

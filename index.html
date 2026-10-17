@@ -6,109 +6,236 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#201522">
 <title>Colorir Sensual</title>
+
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#201522;color:#fff;
-font-family:Arial,sans-serif;text-align:center}
+body{
+ margin:0;background:#201522;color:#fff;
+ font-family:Arial,sans-serif;text-align:center
+}
 header{padding:18px 10px;background:#38213b}
 h1{margin:0;color:#ffb5dc;font-size:25px}
-p{color:#e6d8e7;font-size:14px}
-main{max-width:650px;margin:auto;padding:14px}
-button,.upload{border:0;border-radius:12px;padding:12px;
-background:#a94483;color:white;font-size:15px;
-cursor:pointer}
-.tools{display:flex;flex-wrap:wrap;gap:9px;
-justify-content:center;margin:14px 0}
-#colors{display:flex;flex-wrap:wrap;gap:10px;
-justify-content:center;margin:16px 0}
-.swatch{width:35px;height:35px;border-radius:50%;
-border:2px solid white;padding:0}
-canvas{display:block;width:100%;height:auto;
-background:white;border-radius:12px;touch-action:manipulation}
+p{color:#e6d8e7;font-size:14px;line-height:1.5}
+main{max-width:750px;margin:auto;padding:14px}
+button,.upload{
+ border:0;border-radius:10px;padding:11px 13px;
+ background:#a94483;color:white;font-size:14px;cursor:pointer
+}
+button:hover,.upload:hover{background:#c45a9b}
+.tools{
+ display:flex;flex-wrap:wrap;gap:9px;
+ justify-content:center;margin:14px 0
+}
+#colors{
+ display:flex;flex-wrap:wrap;gap:8px;
+ justify-content:center;margin:14px 0
+}
+.swatch{
+ width:35px;height:35px;border-radius:8px;
+ border:2px solid white;padding:0
+}
 input[type=file]{display:none}
-input[type=color]{width:42px;height:42px;border:0;
-background:none;vertical-align:middle}
+input[type=color]{
+ width:42px;height:42px;border:0;
+ background:none;vertical-align:middle
+}
+#analysis{
+ background:#38213b;border-radius:12px;
+ padding:12px;margin:14px 0;text-align:left
+}
+#analysis p{margin:5px 0 10px}
+#samples{
+ display:flex;flex-wrap:wrap;gap:8px
+}
+.sample{
+ width:42px;height:48px;border-radius:7px;
+ border:1px solid #fff8;position:relative
+}
+.sample span{
+ position:absolute;bottom:2px;left:0;right:0;
+ font-size:9px;color:white;text-shadow:0 1px 3px #000
+}
+#view{
+ width:100%;overflow:auto;background:#fff;
+ border-radius:12px;max-height:75vh;
+ touch-action:pan-x pan-y
+}
+canvas{
+ display:block;width:100%;height:auto;
+ background:white;touch-action:manipulation
+}
+#status{min-height:40px}
 footer{padding:18px;color:#d8c8da;font-size:12px}
 </style>
 </head>
+
 <body>
 <header>
 <h1>💗 Colorir Sensual</h1>
-<p>Escolha um desenho, toque e dê vida às cores!</p>
+<p>Abra uma imagem, descubra suas cores e comece a pintar!</p>
 </header>
+
 <main>
 <div class="tools">
-<label class="upload" for="file">🖼️ Abrir desenho</label>
-<input id="file" type="file" accept="image/*">
-<button id="undo">↩ Desfazer</button>
-<button id="clear">Limpar pintura</button>
-<button id="save">⬇ Salvar imagem</button>
+ <label class="upload" for="file">🖼️ Abrir imagem</label>
+ <input id="file" type="file" accept="image/*">
+ <button id="undo">↩ Desfazer</button>
+ <button id="clear">Limpar pintura</button>
+ <button id="save">⬇ Salvar imagem</button>
 </div>
 
 <div id="colors"></div>
-<label>Cor personalizada:
-<input id="custom" type="color" value="#ef5da8"></label>
 
-<p id="status">Abra um desenho em preto e branco para começar.</p>
-<canvas id="canvas" width="600" height="800"></canvas>
+<label>Cor personalizada:
+ <input id="custom" type="color" value="#ef5da8">
+</label>
+
+<div id="analysis">
+ <p><b>🎨 Análise automática da imagem</b></p>
+ <p id="exactCount">Cores diferentes: —</p>
+ <p id="groupCount">Tons agrupados: —</p>
+ <p>Principais tons encontrados:</p>
+ <div id="samples"></div>
+</div>
+
+<p id="status">Abra uma imagem para começar.</p>
+
+<div id="view">
+ <canvas id="canvas" width="600" height="800"></canvas>
+</div>
 </main>
-<footer>Seus desenhos são processados neste navegador.</footer>
+
+<footer>Suas imagens são processadas neste navegador.</footer>
 
 <script>
-const canvas=document.querySelector('#canvas');
-const ctx=canvas.getContext('2d',{willReadFrequently:true});
-const file=document.querySelector('#file');
-const status=document.querySelector('#status');
-let color='#ef5da8';
-let original=null;
-let history=[];
+const canvas = document.querySelector('#canvas');
+const ctx = canvas.getContext('2d',{willReadFrequently:true});
+const file = document.querySelector('#file');
+const status = document.querySelector('#status');
+const exactCount = document.querySelector('#exactCount');
+const groupCount = document.querySelector('#groupCount');
+const samples = document.querySelector('#samples');
 
-const palette=[
-'#ef5da8','#ff4040','#ff9f43','#ffe066',
-'#72d572','#35c9b5','#4d96ff','#7856d6',
-'#ffffff','#171717','#b97855','#e9c6a8'
+let color = '#ef5da8';
+let original = null;
+let history = [];
+
+const palette = [
+ '#ef5da8','#ff4040','#ff9f43','#ffe066',
+ '#72d572','#35c9b5','#4d96ff','#7856d6',
+ '#ffffff','#171717','#b97855','#e9c6a8'
 ];
 
-const colors=document.querySelector('#colors');
+const colors = document.querySelector('#colors');
+
 palette.forEach(c=>{
- const b=document.createElement('button');
- b.className='swatch';
- b.style.background=c;
+ const b = document.createElement('button');
+ b.className = 'swatch';
+ b.style.background = c;
+ b.title = c;
  b.setAttribute('aria-label','Escolher cor '+c);
- b.onclick=()=>color=c;
+ b.onclick = ()=>{
+   color = c;
+   document.querySelector('#custom').value = c;
+ };
  colors.appendChild(b);
 });
 
-document.querySelector('#custom').oninput=e=>color=e.target.value;
+document.querySelector('#custom').oninput = e=>{
+ color = e.target.value;
+};
 
 function drawPlaceholder(){
- ctx.fillStyle='white';
+ ctx.fillStyle = 'white';
  ctx.fillRect(0,0,canvas.width,canvas.height);
- ctx.fillStyle='#555';
- ctx.textAlign='center';
- ctx.font='20px Arial';
- ctx.fillText('Seu desenho aparecerá aqui',300,380);
- ctx.font='15px Arial';
- ctx.fillText('Toque em “Abrir desenho”',300,415);
+ ctx.fillStyle = '#555';
+ ctx.textAlign = 'center';
+ ctx.font = '20px Arial';
+ ctx.fillText('Sua imagem aparecerá aqui',300,380);
+ ctx.font = '15px Arial';
+ ctx.fillText('Toque em “Abrir imagem”',300,415);
 }
 drawPlaceholder();
+
+/*
+ Analisa os pixels sem modificar a imagem.
+ Cores exatas são contadas pelo RGB.
+ Tons aproximados são agrupados em faixas de 8 níveis.
+*/
+function analyzeImage(imageData){
+ const data = imageData.data;
+ const exact = new Set();
+ const grouped = new Map();
+
+ for(let i=0;i<data.length;i+=4){
+   if(data[i+3]===0) continue;
+
+   const r=data[i],g=data[i+1],b=data[i+2];
+
+   const rgb=(r<<16)|(g<<8)|b;
+   exact.add(rgb);
+
+   const qr=Math.floor(r/8);
+   const qg=Math.floor(g/8);
+   const qb=Math.floor(b/8);
+   const key=(qr<<10)|(qg<<5)|qb;
+
+   let item=grouped.get(key);
+   if(!item){
+     item={count:0,r:0,g:0,b:0};
+     grouped.set(key,item);
+   }
+   item.count++;
+   item.r+=r;
+   item.g+=g;
+   item.b+=b;
+ }
+
+ exactCount.textContent =
+   'Cores RGB diferentes: '+exact.size.toLocaleString('pt-BR');
+
+ groupCount.textContent =
+   'Grupos de tons próximos: '+grouped.size.toLocaleString('pt-BR');
+
+ samples.replaceChildren();
+
+ const top=[...grouped.values()]
+   .sort((a,b)=>b.count-a.count)
+   .slice(0,16);
+
+ top.forEach(item=>{
+   const r=Math.round(item.r/item.count);
+   const g=Math.round(item.g/item.count);
+   const b=Math.round(item.b/item.count);
+
+   const swatch=document.createElement('div');
+   swatch.className='sample';
+   swatch.style.background=`rgb(${r},${g},${b})`;
+   swatch.title=`RGB(${r}, ${g}, ${b}) — ${item.count.toLocaleString('pt-BR')} pixels`;
+
+   const label=document.createElement('span');
+   label.textContent=item.count.toLocaleString('pt-BR');
+   swatch.appendChild(label);
+   samples.appendChild(swatch);
+ });
+}
 
 file.onchange=()=>{
  const f=file.files[0];
  if(!f)return;
 
  if(!f.type.startsWith('image/')){
-   status.textContent='Escolha um arquivo de imagem.';
+   status.textContent='Escolha um arquivo de imagem válido.';
    return;
  }
 
+ const url=URL.createObjectURL(f);
  const img=new Image();
 
  img.onload=()=>{
    const scale=Math.min(900/img.width,1200/img.height,1);
-
-   canvas.width=Math.round(img.width*scale);
-   canvas.height=Math.round(img.height*scale);
+   canvas.width=Math.max(1,Math.round(img.width*scale));
+   canvas.height=Math.max(1,Math.round(img.height*scale));
 
    ctx.fillStyle='white';
    ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -117,133 +244,61 @@ file.onchange=()=>{
    original=ctx.getImageData(0,0,canvas.width,canvas.height);
    history=[];
 
-   // Conta cores RGB exatas e agrupa tons semelhantes.
-   const pixels=original.data;
-   const coresExatas=new Set();
-   const tonsAgrupados=new Set();
-   const coresFrequentes=new Map();
+   status.textContent='Analisando cores da imagem...';
 
-   for(let i=0;i<pixels.length;i+=4){
-     const r=pixels[i];
-     const g=pixels[i+1];
-     const b=pixels[i+2];
-     const a=pixels[i+3];
+   // Executa a análise depois de desenhar a imagem.
+   setTimeout(()=>{
+     try{
+       analyzeImage(original);
+       status.textContent='Análise concluída! Escolha uma cor e toque numa região.';
+     }catch(error){
+       status.textContent='Imagem carregada, mas não foi possível analisar todas as cores.';
+     }
+   },30);
 
-     if(a===0)continue;
-
-     // Cor exata: inclui pequenas diferenças entre pixels.
-     const rgb=(r<<16)|(g<<8)|b;
-     coresExatas.add(rgb);
-
-     // Agrupa cores próximas em faixas de 8 níveis por canal.
-     const qr=Math.floor(r/8);
-     const qg=Math.floor(g/8);
-     const qb=Math.floor(b/8);
-     const grupo=(qr<<10)|(qg<<5)|qb;
-
-     tonsAgrupados.add(grupo);
-     coresFrequentes.set(grupo,(coresFrequentes.get(grupo)||0)+1);
-   }
-
-   const tonsPrincipais=[...coresFrequentes.entries()]
-     .sort((a,b)=>b[1]-a[1])
-     .slice(0,12);
-
-   status.textContent=
-     'Imagem analisada! Cores RGB diferentes: '+
-     coresExatas.size.toLocaleString('pt-BR')+
-     ' | Tons agrupados: '+
-     tonsAgrupados.size.toLocaleString('pt-BR')+
-     '.';
-
-   // Mostra alguns dos tons mais frequentes.
-   let painel=document.querySelector('#analise-cores');
-
-   if(!painel){
-     painel=document.createElement('div');
-     painel.id='analise-cores';
-     painel.style.cssText='margin:14px 0;padding:12px;background:#38213b;border-radius:12px;';
-     colors.insertAdjacentElement('afterend',painel);
-   }
-
-   painel.innerHTML='<p><b>🎨 Tons mais encontrados na imagem</b></p>';
-
-   const amostras=document.createElement('div');
-   amostras.style.cssText='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;';
-
-   tonsPrincipais.forEach(([grupo,quantidade])=>{
-     const r=((grupo>>10)&31)*8+4;
-     const g=((grupo>>5)&31)*8+4;
-     const b=(grupo&31)*8+4;
-
-     const amostra=document.createElement('div');
-     amostra.title='Pixels aproximados: '+quantidade.toLocaleString('pt-BR');
-     amostra.style.cssText=
-       'width:32px;height:32px;border-radius:7px;border:1px solid white;'+
-       'background:rgb('+Math.min(r,255)+','+
-       Math.min(g,255)+','+Math.min(b,255)+');';
-
-     amostras.appendChild(amostra);
-   });
-
-   painel.appendChild(amostras);
-
-   URL.revokeObjectURL(img.src);
+   URL.revokeObjectURL(url);
  };
 
  img.onerror=()=>{
+   URL.revokeObjectURL(url);
    status.textContent='Não foi possível abrir essa imagem.';
  };
 
- img.src=URL.createObjectURL(f);
-};
- }
- const img=new Image();
- img.onload=()=>{
-   const scale=Math.min(900/img.width,1200/img.height,1);
-   canvas.width=Math.round(img.width*scale);
-   canvas.height=Math.round(img.height*scale);
-   ctx.fillStyle='white';
-   ctx.fillRect(0,0,canvas.width,canvas.height);
-   ctx.drawImage(img,0,0,canvas.width,canvas.height);
-   original=ctx.getImageData(0,0,canvas.width,canvas.height);
-   history=[];
-   status.textContent='Desenho carregado! Escolha uma cor e toque numa região fechada.';
-   URL.revokeObjectURL(img.src);
- };
- img.src=URL.createObjectURL(f);
+ img.src=url;
 };
 
 function hexRGB(hex){
  return [
-  parseInt(hex.slice(1,3),16),
-  parseInt(hex.slice(3,5),16),
-  parseInt(hex.slice(5,7),16)
+   parseInt(hex.slice(1,3),16),
+   parseInt(hex.slice(3,5),16),
+   parseInt(hex.slice(5,7),16)
  ];
 }
 
-canvas.onclick=e=>{
+canvas.addEventListener('click',e=>{
  if(!original){
-  status.textContent='Primeiro, abra um desenho.';
-  return;
+   status.textContent='Primeiro, abra uma imagem.';
+   return;
  }
 
  const rect=canvas.getBoundingClientRect();
  const x=Math.floor((e.clientX-rect.left)*canvas.width/rect.width);
  const y=Math.floor((e.clientY-rect.top)*canvas.height/rect.height);
  const w=canvas.width,h=canvas.height;
+
+ if(x<0||y<0||x>=w||y>=h)return;
+
  const img=ctx.getImageData(0,0,w,h);
  const d=img.data;
  const start=(y*w+x)*4;
  const sr=d[start],sg=d[start+1],sb=d[start+2];
 
- // Evita pintar linhas escuras.
  if((sr+sg+sb)/3<100){
-  status.textContent='Toque dentro de uma área branca do desenho.';
-  return;
+   status.textContent='Toque dentro de uma área mais clara.';
+   return;
  }
 
- history.push(ctx.getImageData(0,0,w,h));
+ history.push(img);
  if(history.length>8)history.shift();
 
  const [r,g,b]=hexRGB(color);
@@ -253,43 +308,50 @@ canvas.onclick=e=>{
  let count=0;
 
  while(stack.length){
-  const pos=stack.pop();
-  if(pos<0||pos>=w*h||visited[pos])continue;
-  visited[pos]=1;
-  const i=pos*4;
-  const dr=d[i]-sr,dg=d[i+1]-sg,db=d[i+2]-sb;
+   const pos=stack.pop();
 
-  if(dr*dr+dg*dg+db*db>tolerance*tolerance)continue;
+   if(pos<0||pos>=w*h||visited[pos])continue;
+   visited[pos]=1;
 
-  // Preserva linhas e sombras escuras.
-  if((d[i]+d[i+1]+d[i+2])/3<100)continue;
+   const i=pos*4;
+   const dr=d[i]-sr,dg=d[i+1]-sg,db=d[i+2]-sb;
 
-  d[i]=r;d[i+1]=g;d[i+2]=b;
-  count++;
+   if(dr*dr+dg*dg+db*db>tolerance*tolerance)continue;
+   if((d[i]+d[i+1]+d[i+2])/3<100)continue;
 
-  const px=pos%w;
-  if(px>0)stack.push(pos-1);
-  if(px<w-1)stack.push(pos+1);
-  if(pos>=w)stack.push(pos-w);
-  if(pos<w*(h-1))stack.push(pos+w);
+   d[i]=r;d[i+1]=g;d[i+2]=b;
+   count++;
+
+   const px=pos%w;
+   if(px>0)stack.push(pos-1);
+   if(px<w-1)stack.push(pos+1);
+   if(pos>=w)stack.push(pos-w);
+   if(pos<w*(h-1))stack.push(pos+w);
  }
 
  ctx.putImageData(img,0,0);
+
  status.textContent=count>0
-  ?'Área colorida! Escolha outra cor ou região.'
-  :'Não foi possível pintar essa área.';
-};
+   ?'Área colorida! Pixels pintados: '+count.toLocaleString('pt-BR')+'.'
+   :'Não foi possível pintar essa área.';
+});
 
 document.querySelector('#undo').onclick=()=>{
- if(history.length)ctx.putImageData(history.pop(),0,0);
- else status.textContent='Não há mais ações para desfazer.';
+ if(history.length){
+   ctx.putImageData(history.pop(),0,0);
+   status.textContent='Última pintura desfeita.';
+ }else{
+   status.textContent='Não há ações para desfazer.';
+ }
 };
 
 document.querySelector('#clear').onclick=()=>{
  if(original){
-  history.push(ctx.getImageData(0,0,canvas.width,canvas.height));
-  ctx.putImageData(original,0,0);
-  status.textContent='Pintura reiniciada.';
+   history.push(ctx.getImageData(0,0,canvas.width,canvas.height));
+   if(history.length>8)history.shift();
+
+   ctx.putImageData(original,0,0);
+   status.textContent='Pintura reiniciada.';
  }
 };
 

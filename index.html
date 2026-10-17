@@ -4,325 +4,536 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Colorir Sensual — Pintar por Números</title>
+<meta name="theme-color" content="#201522">
+<title>Colorir Sensual</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#201522;color:#fff;font-family:Arial,sans-serif;text-align:center}
-header{padding:18px 10px;background:#38213b}
+body{margin:0;background:#f5f2f8;color:#30263a;font-family:Arial,sans-serif}
+header{background:#38213b;color:white;padding:18px 10px;text-align:center}
 h1{margin:0;color:#ffb5dc;font-size:25px}
+header p{font-size:13px;color:#f0ddec}
 main{max-width:900px;margin:auto;padding:14px}
-p{font-size:14px;line-height:1.5;color:#eaddea}
-.tools{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:14px 0}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:12px 0}
 button,.upload,select{border:0;border-radius:10px;padding:11px 13px;background:#a94483;color:white;font-size:14px;cursor:pointer}
+button:disabled{opacity:.5}
 input[type=file]{display:none}
 select option{background:#38213b}
-#palette{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin:15px 0}
-.swatch{width:60px;padding:5px!important;background:#38213b!important;border:2px solid transparent}
-.swatch.active{border-color:#fff}
-.chip{height:29px;border-radius:5px;border:1px solid #ffffff55}
-.num{font-size:13px;font-weight:bold;margin-top:4px}
-#view{background:#fff;border-radius:10px;overflow:auto;max-height:78vh}
-canvas{display:block;width:100%;height:auto;touch-action:manipulation}
-#status{min-height:36px}
-small{color:#d9c9dc}
+.panel{background:white;border-radius:14px;padding:13px;margin-bottom:12px;box-shadow:0 2px 9px #25142b10}
+#status{font-size:14px;line-height:1.5;min-height:20px}
+#palette{display:grid;grid-template-columns:repeat(auto-fit,minmax(54px,1fr));gap:7px}
+.swatch{background:#fff!important;color:#30263a!important;border:2px solid #eee!important;padding:5px!important}
+.swatch.active{border:3px solid #a94483!important;background:#fbedf6!important}
+.chip{height:27px;border-radius:5px;border:1px solid #0002}
+.num{font-size:13px;font-weight:bold;padding-top:4px}
+.progress{height:5px;background:#eee;border-radius:8px;overflow:hidden}
+#bar{width:0;height:100%;background:#a94483}
+#workarea{max-height:76vh;overflow:auto;border-radius:10px;background:white}
+canvas{display:block;margin:auto;width:100%;height:auto;background:white}
+.help{font-size:12px;color:#796e80;line-height:1.5}
+footer{text-align:center;font-size:12px;color:#796e80;padding:15px}
 </style>
 </head>
 <body>
 <header>
 <h1>💗 Colorir Sensual</h1>
-<p>Transforme suas fotos em desenhos numerados!</p>
+<p>Transforme imagens em desenhos numerados para colorir</p>
 </header>
 <main>
-<div class="tools">
+<section class="panel">
+<div class="toolbar">
 <label class="upload" for="file">🖼️ Abrir imagem</label>
 <input id="file" type="file" accept="image/*">
-<label>Quantidade
-<select id="quality">
-<option value="6">6 cores</option>
-<option value="10">10 cores</option>
+<select id="quality" aria-label="Quantidade de cores">
+<option value="8">8 cores</option>
+<option value="12">12 cores</option>
 <option value="15" selected>15 cores</option>
 <option value="20">20 cores</option>
+<option value="25">25 cores</option>
 <option value="30">30 cores</option>
-<option value="40">40 cores</option>
 </select>
-</label>
-<button id="generate">✨ Gerar desenho</button>
+<button id="generate">Gerar desenho</button>
 <button id="undo">↩ Desfazer</button>
-<button id="reset">Limpar pintura</button>
+<button id="reset">Recomeçar</button>
 <button id="save">⬇ Salvar</button>
 </div>
-<p id="status">Abra uma foto para começar.</p>
+<div id="status">Abra uma imagem para começar.</div>
+<div class="progress"><div id="bar"></div></div>
+<p id="stats" class="help"></p>
+</section>
+<section class="panel">
+<b>🎨 Escolha o número para pintar</b>
+<p class="help">Selecione uma cor numerada e clique numa região com o mesmo número.</p>
 <div id="palette"></div>
-<div id="view"><canvas id="canvas" width="600" height="800"></canvas></div>
-<p><small>Selecione um número e clique na região correspondente. Os contornos são mantidos ao pintar.</small></p>
+</section>
+<section class="panel">
+<div id="workarea"><canvas id="canvas" width="600" height="800"></canvas></div>
+<p class="help">As linhas permanecem visíveis depois da pintura. O número da região desaparece quando ela é pintada.</p>
+</section>
 </main>
-
+<footer>Suas imagens são processadas neste navegador.</footer>
 <script>
 const canvas=document.querySelector('#canvas');
 const ctx=canvas.getContext('2d');
 const file=document.querySelector('#file');
-const status=document.querySelector('#status');
-const paletteEl=document.querySelector('#palette');
 const quality=document.querySelector('#quality');
+const paletteEl=document.querySelector('#palette');
+const statusEl=document.querySelector('#status');
+const stats=document.querySelector('#stats');
+const bar=document.querySelector('#bar');
 
-let source=null,W=600,H=800;
-let gw=0,gh=0,labels=null,regionColors=[],painted=[];
-let selected=0,history=[],edges=null,components=[];
+let source=null,W=600,H=800,gw=0,gh=0;
+let labels=null,components=[],regionColors=[],painted=[];
+let selected=0,history=[],workingCanvas=null;
 
-function say(s){status.textContent=s}
+function say(text){statusEl.textContent=text}
+function setProgress(value){bar.style.width=value+'%'}
 
-function placeholder(){
+function showPlaceholder(){
  canvas.width=600;canvas.height=800;
  ctx.fillStyle='#fff';ctx.fillRect(0,0,600,800);
- ctx.fillStyle='#555';ctx.textAlign='center';
- ctx.font='20px Arial';ctx.fillText('Sua imagem aparecerá aqui',300,380);
- ctx.font='15px Arial';ctx.fillText('Clique em Abrir imagem',300,415);
+ ctx.fillStyle='#b9adbf';ctx.textAlign='center';
+ ctx.font='bold 21px Arial';
+ ctx.fillText('Seu desenho aparecerá aqui',300,380);
+ ctx.font='15px Arial';
+ ctx.fillText('Clique em Abrir imagem',300,415);
 }
-placeholder();
+showPlaceholder();
 
-file.onchange=()=>{
- const f=file.files[0];if(!f)return;
- if(!f.type.startsWith('image/')){say('Escolha um arquivo de imagem.');return}
- const url=URL.createObjectURL(f),img=new Image();
+file.addEventListener('change',()=>{
+ const f=file.files[0];
+ if(!f)return;
+ if(!f.type.startsWith('image/')){
+  say('Escolha um arquivo de imagem válido.');
+  return;
+ }
+
+ const url=URL.createObjectURL(f);
+ const img=new Image();
+
  img.onload=()=>{
-  const scale=Math.min(1000/img.width,1400/img.height,1);
+  // RESOLUÇÃO MAIOR: imagem original até 1800 x 2400.
+  const scale=Math.min(1800/img.width,2400/img.height,1);
   W=Math.max(1,Math.round(img.width*scale));
   H=Math.max(1,Math.round(img.height*scale));
-  const c=document.createElement('canvas');c.width=W;c.height=H;
-  const cc=c.getContext('2d',{willReadFrequently:true});
-  cc.fillStyle='#fff';cc.fillRect(0,0,W,H);cc.drawImage(img,0,0,W,H);
-  source=cc.getImageData(0,0,W,H);
+
+  const temp=document.createElement('canvas');
+  temp.width=W;temp.height=H;
+  const tctx=temp.getContext('2d',{willReadFrequently:true});
+  tctx.fillStyle='#fff';tctx.fillRect(0,0,W,H);
+  tctx.drawImage(img,0,0,W,H);
+  source=tctx.getImageData(0,0,W,H);
+
   URL.revokeObjectURL(url);
   makeDrawing();
  };
- img.onerror=()=>{URL.revokeObjectURL(url);say('Não foi possível abrir a imagem.')};
+
+ img.onerror=()=>{
+  URL.revokeObjectURL(url);
+  say('Não foi possível abrir esta imagem.');
+ };
  img.src=url;
-};
+});
 
 document.querySelector('#generate').onclick=()=>{
  if(!source){say('Abra uma imagem primeiro.');return}
  makeDrawing();
 };
 
-function dist(a,b){
+function colorDistance(a,b){
  const r=a[0]-b[0],g=a[1]-b[1],bl=a[2]-b[2];
- return r*r+g*g+bl*bl;
+ return 0.30*r*r+0.59*g*g+0.11*bl*bl;
 }
 
 function makeDrawing(){
- say('Analisando cores e criando contornos...');
+ const generateButton=document.querySelector('#generate');
+ generateButton.disabled=true;
  paletteEl.replaceChildren();
  history=[];
+ selected=0;
+ setProgress(0);
+ say('Analisando imagem em alta resolução...');
+ stats.textContent='Imagens grandes podem demorar mais para processar.';
 
- // Grade mais detalhada e suavizada.
- const factor=Math.min(1,560/Math.max(W,H));
- gw=Math.max(1,Math.round(W*factor));
- gh=Math.max(1,Math.round(H*factor));
+ // ALTERADO: análise aumentada de 1400 para 1800 pixels.
+ const scale=Math.min(1,1800/Math.max(W,H));
+ gw=Math.max(1,Math.round(W*scale));
+ gh=Math.max(1,Math.round(H*scale));
 
+ const n=gw*gh;
+ const k=Math.min(Number(quality.value),n);
  const small=document.createElement('canvas');
  small.width=gw;small.height=gh;
+
  const sc=small.getContext('2d',{willReadFrequently:true});
- const tmp=document.createElement('canvas');tmp.width=W;tmp.height=H;
- tmp.getContext('2d').putImageData(source,0,0);
+ const original=document.createElement('canvas');
+ original.width=W;original.height=H;
+ original.getContext('2d').putImageData(source,0,0);
+
  sc.imageSmoothingEnabled=true;
  sc.imageSmoothingQuality='high';
- sc.drawImage(tmp,0,0,gw,gh);
- const pix=sc.getImageData(0,0,gw,gh).data;
- const n=gw*gh,k=Math.min(Number(quality.value),n);
- const points=new Array(n);
+ sc.drawImage(original,0,0,gw,gh);
 
- for(let i=0;i<n;i++)points[i]=[pix[4*i],pix[4*i+1],pix[4*i+2]];
+ const data=sc.getImageData(0,0,gw,gh).data;
+ const pixels=new Array(n);
 
- // Inicialização das cores a partir de pontos distribuídos.
- let centers=[];
- for(let j=0;j<k;j++){
-  const i=Math.min(n-1,Math.floor((j+.5)*n/k));
-  centers.push(points[i].slice());
+ for(let i=0;i<n;i++){
+  pixels[i]=[data[i*4],data[i*4+1],data[i*4+2]];
  }
- const ids=new Uint16Array(n);
- for(let it=0;it<9;it++){
+
+ // Seleção de cores iniciais variadas.
+ const stride=Math.max(1,Math.floor(n/6000));
+ const candidates=[];
+ for(let i=0;i<n;i+=stride)candidates.push(i);
+
+ const centers=[
+  pixels[candidates[Math.floor(candidates.length/2)]].slice()
+ ];
+
+ while(centers.length<k){
+  let bestIndex=candidates[0],bestDistance=-1;
+  for(const i of candidates){
+   let nearest=Infinity;
+   for(const c of centers){
+    nearest=Math.min(nearest,colorDistance(pixels[i],c));
+   }
+   if(nearest>bestDistance){
+    bestDistance=nearest;
+    bestIndex=i;
+   }
+  }
+  centers.push(pixels[bestIndex].slice());
+ }
+
+ let ids=new Uint16Array(n);
+
+ // Agrupamento das cores.
+ for(let iteration=0;iteration<5;iteration++){
   const sums=Array.from({length:k},()=>[0,0,0,0]);
+
   for(let i=0;i<n;i++){
    let best=0,bd=Infinity;
    for(let j=0;j<k;j++){
-    const d=dist(points[i],centers[j]);
+    const d=colorDistance(pixels[i],centers[j]);
     if(d<bd){bd=d;best=j}
    }
    ids[i]=best;
-   const s=sums[best];s[0]+=points[i][0];s[1]+=points[i][1];s[2]+=points[i][2];s[3]++;
+   const s=sums[best];
+   s[0]+=pixels[i][0];
+   s[1]+=pixels[i][1];
+   s[2]+=pixels[i][2];
+   s[3]++;
   }
-  for(let j=0;j<k;j++)if(sums[j][3]){
-   centers[j]=[sums[j][0]/sums[j][3],sums[j][1]/sums[j][3],sums[j][2]/sums[j][3]];
+
+  for(let j=0;j<k;j++){
+   if(sums[j][3]){
+    centers[j]=[
+     sums[j][0]/sums[j][3],
+     sums[j][1]/sums[j][3],
+     sums[j][2]/sums[j][3]
+    ];
+   }
   }
+  setProgress(5+Math.round((iteration+1)*35/5));
  }
 
- // Suavização moderada, preservando os contornos principais.
+ // Suavização de pequenas manchas.
  let next=new Uint16Array(n);
  for(let pass=0;pass<2;pass++){
-  for(let y=0;y<gh;y++)for(let x=0;x<gw;x++){
-   const count=new Uint16Array(k);
-   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-    const xx=x+dx,yy=y+dy;
-    if(xx>=0&&yy>=0&&xx<gw&&yy<gh)count[ids[yy*gw+xx]]++;
+  for(let y=0;y<gh;y++){
+   for(let x=0;x<gw;x++){
+    const votes=new Uint16Array(k);
+
+    for(let dy=-1;dy<=1;dy++){
+     for(let dx=-1;dx<=1;dx++){
+      const xx=x+dx,yy=y+dy;
+      if(xx<0||yy<0||xx>=gw||yy>=gh)continue;
+      votes[ids[yy*gw+xx]]++;
+     }
+    }
+
+    let best=ids[y*gw+x],max=-1;
+    for(let j=0;j<k;j++){
+     if(votes[j]>max){max=votes[j];best=j}
+    }
+    next[y*gw+x]=best;
    }
-   let best=ids[y*gw+x],max=0;
-   for(let j=0;j<k;j++)if(count[j]>max){max=count[j];best=j}
-   next[y*gw+x]=best;
   }
   ids.set(next);
+  setProgress(45+pass*5);
  }
 
- const freq=new Array(k).fill(0);
- for(let i=0;i<n;i++)freq[ids[i]]++;
- const used=Array.from({length:k},(_,i)=>i).filter(i=>freq[i]>0).sort((a,b)=>freq[b]-freq[a]);
+ const frequency=new Array(k).fill(0);
+ for(let i=0;i<n;i++)frequency[ids[i]]++;
+
+ const used=Array.from({length:k},(_,i)=>i)
+  .filter(i=>frequency[i]>0)
+  .sort((a,b)=>frequency[b]-frequency[a]);
+
  const remap=new Uint16Array(k);
- regionColors=used.map((old,i)=>{remap[old]=i;return centers[old].map(Math.round)});
- labels=new Uint16Array(n);
- for(let i=0;i<n;i++)labels[i]=remap[ids[i]];
- painted=new Array(regionColors.length).fill(null);
- selected=0;
+ regionColors=used.map((old,i)=>{
+  remap[old]=i;
+  return centers[old].map(v=>Math.round(v));
+ });
 
- // Limites entre regiões.
- edges=new Uint8Array(n);
- for(let y=0;y<gh;y++)for(let x=0;x<gw;x++){
-  const p=y*gw+x;
-  if(x+1<gw&&labels[p]!==labels[p+1]){edges[p]=1;edges[p+1]=1}
-  if(y+1<gh&&labels[p]!==labels[p+gw]){edges[p]=1;edges[p+gw]=1}
+ for(let i=0;i<n;i++)ids[i]=remap[ids[i]];
+
+ // Encontra as regiões conectadas separadamente.
+ const componentMap=new Int32Array(n);
+ componentMap.fill(-1);
+ components=[];
+ const queue=new Int32Array(n);
+
+ for(let start=0;start<n;start++){
+  if(componentMap[start]!==-1)continue;
+
+  const colorId=ids[start];
+  const componentId=components.length;
+  let head=0,tail=0,sumX=0,sumY=0;
+  let bestCell=start,bestScore=-1;
+
+  queue[tail++]=start;
+  componentMap[start]=componentId;
+
+  while(head<tail){
+   const p=queue[head++];
+   const x=p%gw,y=Math.floor(p/gw);
+   sumX+=x;sumY+=y;
+
+   let score=0;
+   for(let dy=-1;dy<=1;dy++){
+    for(let dx=-1;dx<=1;dx++){
+     if(!dx&&!dy)continue;
+     const xx=x+dx,yy=y+dy;
+     if(xx>=0&&yy>=0&&xx<gw&&yy<gh&&
+        ids[yy*gw+xx]===colorId)score++;
+    }
+   }
+   if(score>bestScore){bestScore=score;bestCell=p}
+
+   const neighbors=[];
+   if(x>0)neighbors.push(p-1);
+   if(x<gw-1)neighbors.push(p+1);
+   if(y>0)neighbors.push(p-gw);
+   if(y<gh-1)neighbors.push(p+gw);
+
+   for(const q of neighbors){
+    if(componentMap[q]===-1&&ids[q]===colorId){
+     componentMap[q]=componentId;
+     queue[tail++]=q;
+    }
+   }
+  }
+
+  components.push({
+   colorId,
+   area:tail,
+   x:sumX/tail,
+   y:sumY/tail,
+   bestX:bestCell%gw,
+   bestY:Math.floor(bestCell/gw)
+  });
+
+  if(start%50000===0){
+   setProgress(Math.min(90,55+Math.round(start/n*35)));
+  }
  }
 
- findComponents();
+ labels=componentMap;
+ painted=new Uint8Array(components.length);
+ workingCanvas=document.createElement('canvas');
+ workingCanvas.width=gw;
+ workingCanvas.height=gh;
+
  buildPalette();
  render();
- say('Pronto! Selecione um número e clique numa região.');
-}
 
-function findComponents(){
- components=[];
- const seen=new Uint8Array(labels.length);
- for(let i=0;i<labels.length;i++){
-  if(seen[i])continue;
-  const id=labels[i],stack=[i];seen[i]=1;
-  let sumX=0,sumY=0,count=0;
-  while(stack.length){
-   const p=stack.pop(),x=p%gw,y=Math.floor(p/gw);
-   sumX+=x;sumY+=y;count++;
-   const ns=[];
-   if(x>0)ns.push(p-1);
-   if(x<gw-1)ns.push(p+1);
-   if(y>0)ns.push(p-gw);
-   if(y<gh-1)ns.push(p+gw);
-   for(const q of ns)if(!seen[q]&&labels[q]===id){seen[q]=1;stack.push(q)}
-  }
-  if(count>=Math.max(8,gw*gh/5000)){
-   components.push({id,x:sumX/count,y:sumY/count,size:count});
-  }
- }
+ stats.textContent=regionColors.length+' cores • '+
+  components.length.toLocaleString('pt-BR')+' regiões • análise '+gw+' × '+gh+' pixels';
+
+ setProgress(100);
+ say('Desenho pronto! Selecione um número e clique numa região correspondente.');
+ generateButton.disabled=false;
 }
 
 function buildPalette(){
  paletteEl.replaceChildren();
+
  regionColors.forEach((c,i)=>{
   const b=document.createElement('button');
   b.className='swatch'+(i===selected?' active':'');
-  const chip=document.createElement('div');chip.className='chip';
-  chip.style.background='#fff';
-  const num=document.createElement('div');num.className='num';num.textContent=i+1;
+
+  const chip=document.createElement('div');
+  chip.className='chip';
+  chip.style.background=`rgb(${c.join(',')})`;
+
+  const num=document.createElement('div');
+  num.className='num';
+  num.textContent=i+1;
+
   b.append(chip,num);
-  b.title='Número '+(i+1);
-  b.onclick=()=>{selected=i;buildPalette()};
+  b.title='Selecionar número '+(i+1);
+  b.onclick=()=>{
+   selected=i;
+   buildPalette();
+   say('Cor selecionada: número '+(selected+1)+'.');
+  };
   paletteEl.appendChild(b);
  });
 }
 
 function render(){
- if(!labels)return;
- canvas.width=W;canvas.height=H;
- const out=ctx.createImageData(W,H),d=out.data;
- const sx=gw/W,sy=gh/H;
+ if(!labels||!workingCanvas)return;
 
- // Ampliação suave da máscara das regiões.
- for(let y=0;y<H;y++){
-  const gy=Math.min(gh-1,Math.floor(y*sy));
-  for(let x=0;x<W;x++){
-   const gx=Math.min(gw-1,Math.floor(x*sx));
-   const p=gy*gw+gx,id=labels[p],q=(y*W+x)*4;
-   const boundary=edges[p]||
-    (gx+1<gw&&labels[p]!==labels[p+1])||
-    (gy+1<gh&&labels[p]!==labels[p+gw]);
+ const wctx=workingCanvas.getContext('2d');
+ const image=wctx.createImageData(gw,gh);
+ const d=image.data;
+ const n=gw*gh;
 
-   let c=painted[id];
-   if(boundary){d[q]=25;d[q+1]=25;d[q+2]=25}
-   else if(c){d[q]=c[0];d[q+1]=c[1];d[q+2]=c[2]}
-   else{d[q]=255;d[q+1]=255;d[q+2]=255}
-   d[q+3]=255;
+ for(let p=0;p<n;p++){
+  const id=labels[p];
+  const component=components[id];
+  const q=p*4;
+  const c=painted[id]?regionColors[component.colorId]:null;
+
+  if(c){
+   d[q]=c[0];d[q+1]=c[1];d[q+2]=c[2];
+  }else{
+   d[q]=255;d[q+1]=255;d[q+2]=255;
+  }
+  d[q+3]=255;
+ }
+
+ wctx.putImageData(image,0,0);
+
+ // Mantém os contornos por cima da pintura.
+ wctx.strokeStyle='#191719';
+ wctx.lineWidth=0.8;
+ wctx.lineCap='round';
+ wctx.lineJoin='round';
+ wctx.beginPath();
+
+ for(let y=0;y<gh;y++){
+  for(let x=0;x<gw;x++){
+   const p=y*gw+x;
+   if(x+1<gw&&labels[p]!==labels[p+1]){
+    wctx.moveTo(x+1,y);
+    wctx.lineTo(x+1,y+1);
+   }
+   if(y+1<gh&&labels[p]!==labels[p+gw]){
+    wctx.moveTo(x,y+1);
+    wctx.lineTo(x+1,y+1);
+   }
   }
  }
- ctx.putImageData(out,0,0);
+ wctx.stroke();
+
+ canvas.width=W;
+ canvas.height=H;
+ ctx.fillStyle='#fff';
+ ctx.fillRect(0,0,W,H);
+ ctx.imageSmoothingEnabled=true;
+ ctx.imageSmoothingQuality='high';
+ ctx.drawImage(workingCanvas,0,0,W,H);
  drawNumbers();
 }
 
 function drawNumbers(){
- ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
+ ctx.save();
+ ctx.textAlign='center';
+ ctx.textBaseline='middle';
+
+ const ordered=components
+  .map((c,id)=>({...c,id}))
+  .filter(c=>!painted[c.id]&&
+    c.area>=Math.max(8,Math.floor(gw*gh/12000)))
+  .sort((a,b)=>b.area-a.area);
+
  const placed=[];
- const minDist=Math.max(16,Math.min(30,gw/18));
- components.sort((a,b)=>b.size-a.size);
- for(const c of components){
-  if(placed.some(p=>Math.hypot(p.x-c.x,p.y-c.y)<minDist))continue;
-  const x=(c.x+.5)*W/gw,y=(c.y+.5)*H/gh;
-  const text=String(c.id+1);
-  const fs=Math.max(9,Math.min(16,Math.min(W,H)/48));
-  ctx.font='bold '+fs+'px Arial';
-  ctx.lineWidth=3;ctx.strokeStyle='white';ctx.fillStyle='#111';
-  ctx.strokeText(text,x,y);ctx.fillText(text,x,y);
-  placed.push({x:c.x,y:c.y});
+ const minDistance=Math.max(13,Math.min(24,W/45));
+ const fontSize=Math.max(8,Math.min(15,W/70));
+ ctx.font='bold '+fontSize+'px Arial';
+
+ for(const c of ordered){
+  const x=(c.bestX+.5)*W/gw;
+  const y=(c.bestY+.5)*H/gh;
+
+  if(placed.some(p=>Math.hypot(p.x-x,p.y-y)<minDistance))continue;
+
+  ctx.lineWidth=3;
+  ctx.strokeStyle='#fff';
+  ctx.fillStyle='#171219';
+  ctx.strokeText(String(c.colorId+1),x,y);
+  ctx.fillText(String(c.colorId+1),x,y);
+  placed.push({x,y});
  }
  ctx.restore();
 }
 
-canvas.onclick=e=>{
+canvas.addEventListener('click',e=>{
  if(!labels)return;
+
  const rect=canvas.getBoundingClientRect();
- const x=Math.max(0,Math.min(W-1,Math.floor((e.clientX-rect.left)*W/rect.width)));
- const y=Math.max(0,Math.min(H-1,Math.floor((e.clientY-rect.top)*H/rect.height)));
+ const x=Math.max(0,Math.min(W-1,
+  Math.floor((e.clientX-rect.left)*W/rect.width)));
+ const y=Math.max(0,Math.min(H-1,
+  Math.floor((e.clientY-rect.top)*H/rect.height)));
+
  const gx=Math.min(gw-1,Math.floor(x*gw/W));
  const gy=Math.min(gh-1,Math.floor(y*gh/H));
- const target=gy*gw+gx,id=labels[target];
+ const id=labels[gy*gw+gx];
+ const component=components[id];
 
- // Pinta somente o componente conectado tocado.
- const seen=new Uint8Array(labels.length),stack=[target];
- seen[target]=1;
- while(stack.length){
-  const p=stack.pop(),px=p%gw,py=Math.floor(p/gw);
-  const ns=[];
-  if(px>0)ns.push(p-1);
-  if(px<gw-1)ns.push(p+1);
-  if(py>0)ns.push(p-gw);
-  if(py<gh-1)ns.push(p+gw);
-  for(const q of ns)if(!seen[q]&&labels[q]===id){seen[q]=1;stack.push(q)}
+ if(!component)return;
+ if(component.colorId!==selected){
+  say('Esta região é o número '+(component.colorId+1)+
+   '. Selecione esse número na paleta.');
+  return;
  }
- history.push(painted.slice());
- if(history.length>20)history.shift();
- painted[id]=regionColors[selected].slice();
+ if(painted[id]){
+  say('Essa região já está pintada.');
+  return;
+ }
+
+ history.push({id,previous:painted[id]});
+ if(history.length>100)history.shift();
+ painted[id]=1;
  render();
- say('Região pintada com o número '+(selected+1)+'.');
-};
+
+ const total=components.filter(c=>c.colorId===selected).length;
+ const done=components.reduce((sum,c,i)=>
+  sum+(c.colorId===selected&&painted[i]?1:0),0);
+
+ say('Região pintada! Número '+(selected+1)+
+  ': '+done+' de '+total+' regiões.');
+});
 
 document.querySelector('#undo').onclick=()=>{
- if(history.length){painted=history.pop();render();say('Última pintura desfeita.')}
- else say('Não há ações para desfazer.');
+ if(!history.length){
+  say('Não há ações para desfazer.');
+  return;
+ }
+ const action=history.pop();
+ if(action.type==='reset')painted=action.previous;
+ else painted[action.id]=action.previous;
+ render();
+ say('Última ação desfeita.');
 };
 
 document.querySelector('#reset').onclick=()=>{
- if(!labels)return;
- history.push(painted.slice());
- painted.fill(null);render();say('Pintura reiniciada.');
+ if(!painted.length)return;
+ history.push({type:'reset',previous:painted.slice()});
+ if(history.length>100)history.shift();
+ painted.fill(0);
+ render();
+ say('Pintura reiniciada.');
 };
 
 document.querySelector('#save').onclick=()=>{
- if(!labels){say('Gere um desenho primeiro.');return}
+ if(!labels){say('Abra uma imagem primeiro.');return}
  const a=document.createElement('a');
- a.download='desenho-numerado.png';
- a.href=canvas.toDataURL('image/png');a.click();
+ a.download='colorir-sensual.png';
+ a.href=canvas.toDataURL('image/png');
+ a.click();
 };
 </script>
 </body>
